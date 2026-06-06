@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Riemann Sum Calculator</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            margin: 20px;
+            background-color: #f4f7f6;
+            color: #333;
+        }
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: #fff;
+            padding: 25px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        h1, h2 {
+            text-align: center;
+            color: #2c3e50;
+        }
+        .function-banner {
+            text-align: center;
+            font-size: 1.2rem;
+            background: #eef2f3;
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            font-weight: bold;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 600;
+        }
+        select, input {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            box-sizing: border-box;
+            font-size: 1rem;
+        }
+        button {
+            display: block;
+            width: 100%;
+            padding: 12px;
+            background-color: #3498db;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-size: 1.1rem;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        button:hover {
+            background-color: #2980b9;
+        }
+        #results {
+            margin-top: 30px;
+            padding: 20px;
+            background: #f9f9f9;
+            border-left: 5px solid #2ecc71;
+            border-radius: 4px;
+        }
+        .result-item {
+            margin-bottom: 10px;
+            font-size: 1.1rem;
+        }
+        .chart-container {
+            position: relative;
+            margin-top: 30px;
+            height: 400px;
+            width: 100%;
+        }
+        #prompt-box {
+            display: none;
+            text-align: center;
+            margin-top: 25px;
+            padding: 20px;
+            background: #fff8db;
+            border: 1px solid #f1c40f;
+            border-radius: 5px;
+        }
+        #prompt-box button {
+            display: inline-block;
+            width: auto;
+            padding: 10px 30px;
+            background-color: #27ae60;
+            margin-top: 10px;
+        }
+        #prompt-box button:hover {
+            background-color: #219653;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>Riemann Sum Visualizer</h1>
+    <div class="function-banner">Function: f(x) = e<sup>-x</sup></div>
+
+    <div id="calculator-form">
+        <div class="form-group">
+            <label for="type">Approximation Type:</label>
+            <select id="type">
+                <option value="LRAM">LRAM (Left Riemann Sum)</option>
+                <option value="RRAM">RRAM (Right Riemann Sum)</option>
+                <option value="MRAM">MRAM (Midpoint Riemann Sum)</option>
+                <option value="TRAP">Trapezoidal Rule</option>
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label for="a">Lower x value (a):</label>
+            <input type="number" id="a" step="any" value="0" required>
+        </div>
+
+        <div class="form-group">
+            <label for="b">Higher x value (b):</label>
+            <input type="number" id="b" step="any" value="3" required>
+        </div>
+
+        <div class="form-group">
+            <label for="n">Number of Subdivisions (n):</label>
+            <input type="number" id="n" min="1" max="200" value="6" required>
+        </div>
+
+        <button type="button" id="calculate-btn" onclick="calculate()">Calculate & Graph</button>
+    </div>
+
+    <div id="results" style="display: none;">
+        <h2>Results</h2>
+        <div class="result-item"><strong>Approximation Value:</strong> <span id="approx-val">0</span></div>
+        <div class="result-item"><strong>Exact Value (Integral):</strong> <span id="exact-val">0</span></div>
+        <div class="result-item"><strong>Absolute Error:</strong> <span id="error-val">0</span></div>
+        
+        <div class="chart-container">
+            <canvas id="riemannChart"></canvas>
+        </div>
+
+        <div id="prompt-box">
+            <p>Would you like to try another approximation?</p>
+            <button onclick="resetForm()">Yes</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    let chartInstance = null;
+
+    // Define target function: f(x) = e^(-x)
+    function f(x) {
+        return Math.exp(-x);
+    }
+
+    // Exact definite integral of e^(-x) from a to b
+    // Value is [-e^(-x)] from a to b = e^(-a) - e^(-b)
+    function exactIntegral(a, b) {
+        return Math.exp(-a) - Math.exp(-b);
+    }
+
+    function calculate() {
+        // 1. Get input values
+        const type = document.getElementById('type').value;
+        const a = parseFloat(document.getElementById('a').value);
+        const b = parseFloat(document.getElementById('b').value);
+        const n = parseInt(document.getElementById('n').value);
+
+        if (isNaN(a) || isNaN(b) || isNaN(n) || n <= 0) {
+            alert("Please enter valid numerical inputs.");
+            return;
+        }
+        if (a >= b) {
+            alert("The lower x value (a) must be less than the higher x value (b).");
+            return;
+        }
+
+        const dx = (b - a) / n;
+        let approxSum = 0;
+
+        // Data arrays for Chart JS visualization
+        let shapesData = []; // Will store the outline data for bars/trapezoids
+
+        // 2. Math logic processing
+        if (type === 'TRAP') {
+            // Trapezoidal Rule logic
+            approxSum += f(a) / 2;
+            for (let i = 1; i < n; i++) {
+                approxSum += f(a + i * dx);
+            }
+            approxSum += f(b) / 2;
+            approxSum *= dx;
+
+            // Generate outline paths for trapezoids
+            for (let i = 0; i < n; i++) {
+                let x0 = a + i * dx;
+                let x1 = a + (i + 1) * dx;
+                shapesData.push({x: x0, y: 0}, {x: x0, y: f(x0)}, {x: x1, y: f(x1)}, {x: x1, y: 0}, {x: x0, y: NaN});
+            }
+        } else {
+            // Riemann Rectangles (LRAM, RRAM, MRAM)
+            for (let i = 0; i < n; i++) {
+                let xLeft = a + i * dx;
+                let xRight = a + (i + 1) * dx;
+                let evalX;
+
+                if (type === 'LRAM') evalX = xLeft;
+                else if (type === 'RRAM') evalX = xRight;
+                else if (type === 'MRAM') evalX = xLeft + dx / 2;
+
+                let height = f(evalX);
+                approxSum += height * dx;
+
+                // Build full rectangle visualization coordinate path
+                shapesData.push({x: xLeft, y: 0}, {x: xLeft, y: height}, {x: xRight, y: height}, {x: xRight, y: 0}, {x: xLeft, y: NaN});
+            }
+        }
+
+        const exact = exactIntegral(a, b);
+        const error = Math.abs(exact - approxSum);
+
+        // 3. Update Results Section
+        document.getElementById('approx-val').innerText = approxSum.toFixed(6);
+        document.getElementById('exact-val').innerText = exact.toFixed(6);
+        document.getElementById('error-val').innerText = error.toFixed(6);
+
+        // Hide Calculate Button and reveal results & reset prompt
+        document.getElementById('calculate-btn').style.display = 'none';
+        document.getElementById('results').style.display = 'block';
+        document.getElementById('prompt-box').style.display = 'block';
+
+        // 4. Generate Graph
+        renderGraph(a, b, shapesData);
+    }
+
+    function renderGraph(a, b, shapesData) {
+        // Generate continuous curve data for f(x) = e^-x
+        let curveData = [];
+        let padding = (b - a) * 0.1; // Add 10% padding to graph bounds
+        let startX = a - padding;
+        let endX = b + padding;
+        let steps = 100;
+        
+        for (let i = 0; i <= steps; i++) {
+            let x = startX + (i * (endX - startX) / steps);
+            curveData.push({x: x, y: f(x)});
+        }
+
+        const ctx = document.getElementById('riemannChart').getContext('2d');
+
+        // Destroy old canvas layout if it exists to refresh fresh state
+        if (chartInstance) {
+            chartInstance.destroy();
+        }
+
+        chartInstance = new Chart(ctx, {
+            type: 'scatter',
+            data: {
+                datasets: [
+                    {
+                        label: 'f(x) = e^-x',
+                        data: curveData,
+                        showLine: true,
+                        borderColor: '#e74c3c',
+                        borderWidth: 2,
+                        pointRadius: 0,
+                        fill: false
+                    },
+                    {
+                        label: 'Approximation Subdivisions',
+                        data: shapesData,
+                        showLine: true,
+                        borderColor: '#2980b9',
+                        backgroundColor: 'rgba(52, 152, 219, 0.3)',
+                        borderWidth: 2,
+                        pointRadius: 0,
+                        fill: 'origin' // Fills down to the x-axis baseline
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    x: {
+                        type: 'linear',
+                        position: 'bottom',
+                        title: { display: true, text: 'X Axis' }
+                    },
+                    y: {
+                        title: { display: true, text: 'Y Axis' },
+                        min: 0
+                    }
+                },
+                plugins: {
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                if (isNaN(context.raw.y)) return null;
+                                return `(x: ${context.raw.x.toFixed(3)}, y: ${context.raw.y.toFixed(3)})`;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    function resetForm() {
+        // Hide results/prompt and bring back calculate interface safely
+        document.getElementById('results').style.display = 'none';
+        document.getElementById('prompt-box').style.display = 'none';
+        document.getElementById('calculate-btn').style.display = 'block';
+        
+        // Scroll back up to the inputs smooth
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+</script>
+
+</body>
+</html>
